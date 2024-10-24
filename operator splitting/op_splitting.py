@@ -5,6 +5,7 @@ import numpy as np
 from mpi4py import MPI
 import ufl
 import matplotlib.pyplot as plt
+import simple as model
 
 lam = 1
 T = 1.0  # Final time
@@ -18,9 +19,8 @@ def initial_s(x):
 def initial_v(x):
     return 0*x[0]
 
-def forward_euler_step(init, dt):
-    v = init[0] - dt * init[1]
-    s = init[1] + dt * init[0]
+def forward_euler_step(init, t, dt):
+    s, v = model.forward_explicit_euler([init[1], init[0]], t, dt, 0)
     return v, s
 
 def solve(h, dt, theta, lagrangeOrder, xdmfTitle=None):
@@ -70,7 +70,7 @@ def solve(h, dt, theta, lagrangeOrder, xdmfTitle=None):
     while t.value < T:
         # Step 1
         t.value += theta * dt
-        vntheta.x.array[:], sntheta.x.array[:] = forward_euler_step([vn.x.array, sn.x.array], theta * dt)
+        vntheta.x.array[:], sntheta.x.array[:] = forward_euler_step([vn.x.array, sn.x.array], t.value, theta * dt)
 
         # Step 2
         b.x.array[:] = 0
@@ -82,7 +82,7 @@ def solve(h, dt, theta, lagrangeOrder, xdmfTitle=None):
         # Step 3
         if theta < 1.0:
             t.value += (1-theta) * dt
-            vn.x.array[:], sn.x.array[:] = forward_euler_step([vn.x.array.copy(), sntheta.x.array], (1-theta) * dt)
+            vn.x.array[:], sn.x.array[:] = forward_euler_step([vn.x.array.copy(), sntheta.x.array], t.value, (1-theta) * dt)
         else:
             sn.x.array[:] = sntheta.x.array.copy()
         
@@ -116,7 +116,7 @@ def analyse_error(numSpatial, numTemporal, startSpatial, startTemporal, theta, l
     errors, hs, dts = create_error_matrix(numSpatial, numTemporal, startSpatial, startTemporal, theta, lagrangeOrder)
     
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14,5), sharey=True)
-    fig.suptitle(f'L2 error for Lagrange order {lagrangeOrder}. Order of convergence ' + r'$p$.')
+    fig.suptitle(f'L2 error for Lagrange order {lagrangeOrder}. Order of convergence ' + r'$p$. $\theta=$' + f'{theta}')
     
     for itime in range(len(dts)):
         order = np.polyfit(np.log(hs),np.log(errors[itime]), 1)[0]
