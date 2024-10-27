@@ -1,4 +1,4 @@
-states(v = 0.0, s = 0.0)
+states(v = 1.0, s = 2.0)
 
 # Time derivatives
 dv_dt = -s

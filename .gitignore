@@ -130,4 +130,6 @@ dmypy.json
 
 *.h5
 *.xdmf
+*.bp
 .DS_store
+**/__pycache__

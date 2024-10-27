@@ -88,9 +88,9 @@ def init_parameter_values(**values):
 
 def init_state_values(**values):
     """Initialize state values"""
-    # s=0.0, v=0.0
+    # s=2.0, v=1.0
 
-    states = numpy.array([0.0, 0.0], dtype=numpy.float64)
+    states = numpy.array([2.0, 1.0], dtype=numpy.float64)
 
     for key, value in values.items():
         states[state_index(key)] = value

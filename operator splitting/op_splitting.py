@@ -10,9 +10,6 @@ import simple as model
 lam = 1
 T = 1.0  # Final time
 
-def v_exact(t):
-    return lambda x: np.cos(2 * np.pi * x[0]) * np.cos(2 * np.pi * x[1]) * np.sin(t)
-
 def initial_s(x):
     return -np.cos(2*np.pi * x[0]) * np.cos(2*np.pi * x[1])
 
@@ -23,7 +20,7 @@ def forward_euler_step(init, t, dt):
     s, v = model.forward_explicit_euler([init[1], init[0]], t, dt, 0)
     return v, s
 
-def solve(h, dt, theta, lagrangeOrder, xdmfTitle=None):
+def solve(h, dt, theta, lagrangeOrder, vtxTitle=None):
     gamma = dt * lam / (1+lam)
     N = int(np.ceil(1/h))
 
@@ -42,14 +39,11 @@ def solve(h, dt, theta, lagrangeOrder, xdmfTitle=None):
     sn.name = "sn"
     sn.interpolate(initial_s)
 
-    vntheta = fem.Function(V)
-    sntheta = fem.Function(V)
-
     v = ufl.TrialFunction(V)
     phi = ufl.TestFunction(V)
     dx = ufl.dx(domain=domain)
     a = phi * v * dx + gamma * theta * ufl.dot(ufl.grad(phi), ufl.grad(v)) * dx
-    L = phi * (vntheta + dt * I_stim) * dx - gamma * (1-theta) * ufl.dot(ufl.grad(phi), ufl.grad(vntheta)) * dx
+    L = phi * (vn + dt * I_stim) * dx - gamma * (1-theta) * ufl.dot(ufl.grad(phi), ufl.grad(vn)) * dx
     compiled_a = fem.form(a)
     A = petsc.assemble_matrix(compiled_a)
     A.assemble()
@@ -62,34 +56,39 @@ def solve(h, dt, theta, lagrangeOrder, xdmfTitle=None):
     solver.setType(PETSc.KSP.Type.PREONLY)
     solver.getPC().setType(PETSc.PC.Type.LU)
     
-    if xdmfTitle:
-        xdmf = io.XDMFFile(domain.comm, xdmfTitle, "w")
-        xdmf.write_mesh(domain)
-        xdmf.write_function(vn, t)
+    if vtxTitle:
+        vtx = io.VTXWriter(MPI.COMM_WORLD, vtxTitle + ".bp", [vn], engine="BP4")
+        vtx.write(0.0)
+    
+    init = model.init_state_values()
+    values = np.zeros((len(init), len(vn.x.array)))
+    v_index = model.state_index("v")
+    s_index = model.state_index("s")
+
+    values[v_index, :] = vn.x.array
+    values[s_index, :] = sn.x.array
 
     while t.value < T:
         # Step 1
+        values[:] = model.forward_explicit_euler(values, t.value, theta*dt, 0)
         t.value += theta * dt
-        vntheta.x.array[:], sntheta.x.array[:] = forward_euler_step([vn.x.array, sn.x.array], t.value, theta * dt)
 
         # Step 2
+        vn.x.array[:] = values[v_index,:]
         b.x.array[:] = 0
         petsc.assemble_vector(b.vector, compiled_L)
         
         solver.solve(b.vector, vn.vector)
         vn.x.scatter_forward()
+        values[v_index,:] = vn.x.array[:]
 
         # Step 3
         if theta < 1.0:
+            values[:] = model.forward_explicit_euler(values, t.value, (1-theta) * dt, 0)
             t.value += (1-theta) * dt
-            vn.x.array[:], sn.x.array[:] = forward_euler_step([vn.x.array.copy(), sntheta.x.array], t.value, (1-theta) * dt)
-        else:
-            sn.x.array[:] = sntheta.x.array.copy()
-        
-        if xdmfTitle:
-            xdmf.write_function(vn, t.value)
-    if xdmfTitle:
-        xdmf.close()
+        vn.x.array[:] = values[v_index,:]
+        if vtxTitle:
+            vtx.write(t.value)
     return vn, x, t
 
 def error(h, dt, theta, lagrangeOrder):
