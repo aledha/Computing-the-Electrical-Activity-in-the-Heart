@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 from typing import Any
 import gotranx
 
-
 lam = 1
 T = 1.0  # Final time
 
@@ -19,16 +18,35 @@ def initial_v(x):
     return 0*x[0]
 
 def solve(h, dt, ode, scheme, theta, lagrangeOrder, vtxTitle=None):
+    """Monodomain solver
+
+    Args:
+        h (float): spatial stepsize
+        dt (float): temporal
+        ode (gotranx ODE): ode in operator splitting
+        scheme (gotranx Scheme): scheme used to solve the ODE
+        theta (float): operator splitting parameter. 
+        lagrangeOrder (int): order of Lagrange basis functions
+        vtxTitle (string, optional): Title for file to save solution. Doesn't save solutions if None.
+
+    Returns:
+        vn (fem.Function): solution at last timestep
+        x (ufl.SpatialCoordinate)
+        t (fem.Constant): time at last step
+    """
     gamma = dt * lam / (1+lam)
     N = int(np.ceil(1/h))
 
+    # Create square domain and function space
     domain = mesh.create_unit_square(MPI.COMM_WORLD, N, N, mesh.CellType.quadrilateral)
     V = fem.functionspace(domain, ("Lagrange", lagrangeOrder))
     t = fem.Constant(domain, 0.0)
     x = ufl.SpatialCoordinate(domain)
 
+    # Define stimulating current
     I_stim = 8 * ufl.pi**2 * lam/(1+lam) * ufl.sin(t) * ufl.cos(2*ufl.pi*x[0]) * ufl.cos(2*ufl.pi*x[1])
     
+    # Intialize states
     vn = fem.Function(V)
     vn.name = "vn"
     vn.interpolate(initial_v)
@@ -37,6 +55,7 @@ def solve(h, dt, ode, scheme, theta, lagrangeOrder, vtxTitle=None):
     sn.name = "sn"
     sn.interpolate(initial_s)
 
+    # Setup PDE solver
     v = ufl.TrialFunction(V)
     phi = ufl.TestFunction(V)
     dx = ufl.dx(domain=domain)
@@ -58,6 +77,7 @@ def solve(h, dt, ode, scheme, theta, lagrangeOrder, vtxTitle=None):
         vtx = io.VTXWriter(MPI.COMM_WORLD, vtxTitle + ".bp", [vn], engine="BP4")
         vtx.write(0.0)
 
+    # Setup ODE solver
     code = gotranx.cli.gotran2py.get_code(
     ode, scheme = [scheme])
     model: dict[str, Any] = {}
@@ -69,6 +89,7 @@ def solve(h, dt, ode, scheme, theta, lagrangeOrder, vtxTitle=None):
     s_index = model["state_index"]("s")
     odesolver = model["generalized_rush_larsen"]
 
+    # Set initial states
     values[v_index, :] = vn.x.array
     values[s_index, :] = sn.x.array
 
@@ -96,15 +117,44 @@ def solve(h, dt, ode, scheme, theta, lagrangeOrder, vtxTitle=None):
     return vn, x, t
 
 def error(h, dt, ode, scheme, theta, lagrangeOrder):
-    vn, x, t = solve(h, dt, ode, scheme, theta, lagrangeOrder)
-    v_ex = ufl.cos(2 * ufl.pi * x[0]) * ufl.cos(2 * ufl.pi * x[1]) * ufl.sin(t)
+    """Compute error for model monodomain problem
+
+    Args:
+        h (float): spatial stepsize
+        dt (float): temporal
+        ode (gotranx ODE): ode in operator splitting
+        scheme (gotranx Scheme): scheme used to solve the ODE
+        theta (float): operator splitting parameter. 
+        lagrangeOrder (int): order of Lagrange basis functions
+
+    Returns:
+        E (float): L2 error
+    """
+    vn, x, t = solve(h, dt, ode, scheme, theta, lagrangeOrder) # Computed solution
+    v_ex = ufl.cos(2 * ufl.pi * x[0]) * ufl.cos(2 * ufl.pi * x[1]) * ufl.sin(t) # Exact solution at final timestep
 
     comm = vn.function_space.mesh.comm
-    error = fem.form(ufl.sqrt((vn - v_ex)**2) * ufl.dx)
+    error = fem.form(ufl.sqrt((vn - v_ex)**2) * ufl.dx) # L2 error
     E = np.sqrt(comm.allreduce(fem.assemble_scalar(error), MPI.SUM))
     return E
 
 def create_error_matrix(numSpatial, numTemporal, startSpatial, startTemporal, ode, scheme, theta, lagrangeOrder):
+    """
+    Args:
+        numSpatial (int): number of spatial refinements
+        numTemporal (int): number of temporal refinements
+        startSpatial (int): coarsest spatial step size as h=2^startSpatial
+        startTemporal (int): coarsest temporal step size as dt=2^startTemporal
+        ode (gotranx ODE): ode in operator splitting
+        scheme (gotranx Scheme): scheme used to solve the ODE
+        theta (float): operator splitting parameter. 
+        lagrangeOrder (int): order of Lagrange basis functions
+
+    Returns:
+        errors (numTemporal x numSpatial NDarray [float]): matrix with errors, indices are temporal and spatial stepsizes.
+        hs (list): list of spatial stepsizes
+        dts (list): list of temporal stepsizes
+    """
     hs = [1/(2**i) for i in range(startSpatial+numSpatial, startSpatial, -1)]
     dts = [1/(2**i) for i in range(startTemporal+numTemporal, startTemporal, -1)]
 
@@ -116,6 +166,18 @@ def create_error_matrix(numSpatial, numTemporal, startSpatial, startTemporal, od
     return errors, hs, dts
 
 def analyse_error(numSpatial, numTemporal, startSpatial, startTemporal, ode, scheme, theta, lagrangeOrder):
+    """Convergence plots in space and time
+
+    Args:
+        numSpatial (int): number of spatial refinements
+        numTemporal (int): number of temporal refinements
+        startSpatial (int): coarsest spatial step size as h=2^startSpatial
+        startTemporal (int): coarsest temporal step size as dt=2^startTemporal
+        ode (gotranx ODE): ode in operator splitting
+        scheme (gotranx Scheme): scheme used to solve the ODE
+        theta (float): operator splitting parameter. 
+        lagrangeOrder (int): order of Lagrange basis functions
+    """
     errors, hs, dts = create_error_matrix(numSpatial, numTemporal, startSpatial, startTemporal, ode, scheme, theta, lagrangeOrder)
     
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14,5), sharey=True)
