@@ -5,7 +5,9 @@ import numpy as np
 from mpi4py import MPI
 import ufl
 import matplotlib.pyplot as plt
-import simple as model
+from typing import Any
+import gotranx
+
 
 lam = 1
 T = 1.0  # Final time
@@ -16,11 +18,7 @@ def initial_s(x):
 def initial_v(x):
     return 0*x[0]
 
-def forward_euler_step(init, t, dt):
-    s, v = model.forward_explicit_euler([init[1], init[0]], t, dt, 0)
-    return v, s
-
-def solve(h, dt, theta, lagrangeOrder, vtxTitle=None):
+def solve(h, dt, ode, scheme, theta, lagrangeOrder, vtxTitle=None):
     gamma = dt * lam / (1+lam)
     N = int(np.ceil(1/h))
 
@@ -59,18 +57,24 @@ def solve(h, dt, theta, lagrangeOrder, vtxTitle=None):
     if vtxTitle:
         vtx = io.VTXWriter(MPI.COMM_WORLD, vtxTitle + ".bp", [vn], engine="BP4")
         vtx.write(0.0)
-    
-    init = model.init_state_values()
+
+    code = gotranx.cli.gotran2py.get_code(
+    ode, scheme = [scheme])
+    model: dict[str, Any] = {}
+    exec(code, model)
+
+    init = model["init_state_values"]()
     values = np.zeros((len(init), len(vn.x.array)))
-    v_index = model.state_index("v")
-    s_index = model.state_index("s")
+    v_index = model["state_index"]("v")
+    s_index = model["state_index"]("s")
+    odesolver = model["generalized_rush_larsen"]
 
     values[v_index, :] = vn.x.array
     values[s_index, :] = sn.x.array
 
     while t.value < T:
         # Step 1
-        values[:] = model.forward_explicit_euler(values, t.value, theta*dt, 0)
+        values[:] = odesolver(values, t.value, theta*dt, 0)
         t.value += theta * dt
 
         # Step 2
@@ -84,15 +88,15 @@ def solve(h, dt, theta, lagrangeOrder, vtxTitle=None):
 
         # Step 3
         if theta < 1.0:
-            values[:] = model.forward_explicit_euler(values, t.value, (1-theta) * dt, 0)
+            values[:] = odesolver(values, t.value, (1-theta) * dt, 0)
             t.value += (1-theta) * dt
         vn.x.array[:] = values[v_index,:]
         if vtxTitle:
             vtx.write(t.value)
     return vn, x, t
 
-def error(h, dt, theta, lagrangeOrder):
-    vn, x, t = solve(h, dt, theta, lagrangeOrder)
+def error(h, dt, ode, scheme, theta, lagrangeOrder):
+    vn, x, t = solve(h, dt, ode, scheme, theta, lagrangeOrder)
     v_ex = ufl.cos(2 * ufl.pi * x[0]) * ufl.cos(2 * ufl.pi * x[1]) * ufl.sin(t)
 
     comm = vn.function_space.mesh.comm
@@ -100,7 +104,7 @@ def error(h, dt, theta, lagrangeOrder):
     E = np.sqrt(comm.allreduce(fem.assemble_scalar(error), MPI.SUM))
     return E
 
-def create_error_matrix(numSpatial, numTemporal, startSpatial, startTemporal, theta, lagrangeOrder):
+def create_error_matrix(numSpatial, numTemporal, startSpatial, startTemporal, ode, scheme, theta, lagrangeOrder):
     hs = [1/(2**i) for i in range(startSpatial+numSpatial, startSpatial, -1)]
     dts = [1/(2**i) for i in range(startTemporal+numTemporal, startTemporal, -1)]
 
@@ -108,11 +112,11 @@ def create_error_matrix(numSpatial, numTemporal, startSpatial, startTemporal, th
 
     for itime in range(numTemporal):
         for ispace in range(numSpatial):
-            errors[itime, ispace] = error(hs[ispace], dts[itime], theta, lagrangeOrder)
+            errors[itime, ispace] = error(hs[ispace], dts[itime], ode, scheme, theta, lagrangeOrder)
     return errors, hs, dts
 
-def analyse_error(numSpatial, numTemporal, startSpatial, startTemporal, theta, lagrangeOrder):
-    errors, hs, dts = create_error_matrix(numSpatial, numTemporal, startSpatial, startTemporal, theta, lagrangeOrder)
+def analyse_error(numSpatial, numTemporal, startSpatial, startTemporal, ode, scheme, theta, lagrangeOrder):
+    errors, hs, dts = create_error_matrix(numSpatial, numTemporal, startSpatial, startTemporal, ode, scheme, theta, lagrangeOrder)
     
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14,5), sharey=True)
     fig.suptitle(f'L2 error for Lagrange order {lagrangeOrder}. Order of convergence ' + r'$p$. $\theta=$' + f'{theta}')
