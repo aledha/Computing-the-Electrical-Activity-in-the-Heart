@@ -41,6 +41,7 @@ class PDESolver:
         self.x = ufl.SpatialCoordinate(domain)
 
         self.vn = fem.Function(self.V)
+        self.vn.name = "vn"
     
     def initialize_vn(self, initial_v):
         self.vn.interpolate(initial_v)
@@ -82,25 +83,29 @@ class PDESolver:
 class ODESolver:
     def __init__(self, odefile, scheme, initial_v, initial_states, state_names):
         try:
-            model = importlib.import_module(f"odes.{odefile}")
+            self.model = importlib.import_module(f"odes.{odefile}")
         except ImportError as e:
             raise ImportError(f"Failed to import {odefile}: {e}")
         
-        init = model.init_state_values()
+        init = self.model.init_state_values()
         self.states = np.zeros((len(init), len(initial_v.x.array)))
         
-        self.v_index = model.state_index("v")
+        self.v_index = self.model.state_index("v")
         self.states[self.v_index, :] = initial_v.x.array
 
         for state, name in zip(initial_states, state_names):
-            state_index = model.state_index(name)
+            state_index = self.model.state_index(name)
             if isinstance(state, np.ndarray):
                 self.states[state_index, :] = state
             else:
                 self.states[state_index, :] = state.x.array
 
-        self.params = model.init_parameter_values()
-        self.odesolver = getattr(model, scheme)
+        self.params = self.model.init_parameter_values()
+        self.odesolver = getattr(self.model, scheme)
+
+    def set_param(self, name, value):
+        param_index = self.model.parameter_index(name)
+        self.params[param_index] = value
     
     def solve_ode_step(self, t, dt):
         self.states[:] = self.odesolver(self.states, t, dt, self.params)
@@ -137,9 +142,14 @@ class MonodomainSolver:
 
         self.pde.vn.x.array[:] = self.ode.get_vn()
 
-    def solve(self, T):
+    def solve(self, T, vtx_title):
+        if vtx_title:
+            vtx = io.VTXWriter(MPI.COMM_WORLD, vtx_title + ".bp", [self.pde.vn], engine="BP4")
+            vtx.write(0.0)
         while self.t.value < T:
             self.step()
+            if vtx_title:
+                vtx.write(self.t.value)
 
         return self.pde.vn, self.pde.x, self.t
 
