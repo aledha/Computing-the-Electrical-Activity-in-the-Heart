@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 import ufl.constant
 
-import model
+import simple as model
 
 def translateODE(odeFileName, scheme):
     odeFolder = str(Path.cwd().parent) + "/odes/"
@@ -45,6 +45,11 @@ class PDESolver:
     
     def initialize_vn(self, initial_v):
         self.vn.interpolate(initial_v)
+    
+    def interpolate_func(self, func):
+        fem_func = fem.Function(self.V)
+        fem_func.interpolate(func)
+        return fem_func
 
     def set_stimulus(self, I_stim):
         self.I_stim = I_stim
@@ -85,7 +90,10 @@ class ODESolver:
 
         for state, name in zip(initial_states, state_names):
             state_index = model.state_index(name)
-            self.states[state_index, :] = state
+            if isinstance(state, np.ndarray):
+                self.states[state_index, :] = state
+            else:
+                self.states[state_index, :] = state.x.array
 
         self.params = model.init_parameter_values()
         self.odesolver = getattr(model, scheme)
