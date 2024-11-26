@@ -7,17 +7,16 @@ import ufl
 import gotranx
 from pathlib import Path
 from dataclasses import dataclass
+import importlib
+import sys
+sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-import ufl.constant
-
-import simple as model
-
-def translateODE(odeFileName, scheme):
+def translateODE(odeFileName, schemes):
     odeFolder = str(Path.cwd().parent) + "/odes/"
     model_path = Path(odeFolder + odeFileName + ".py")
     if not model_path.is_file():
         ode = gotranx.load_ode(odeFolder + odeFileName + ".ode")
-        code = gotranx.cli.gotran2py.get_code(ode, scheme)
+        code = gotranx.cli.gotran2py.get_code(ode, schemes)
         model_path.write_text(code)
     else:
         print("ODE already translated")
@@ -81,7 +80,12 @@ class PDESolver:
 
 
 class ODESolver:
-    def __init__(self, scheme, initial_v, initial_states, state_names):
+    def __init__(self, odefile, scheme, initial_v, initial_states, state_names):
+        try:
+            model = importlib.import_module(f"odes.{odefile}")
+        except ImportError as e:
+            raise ImportError(f"Failed to import {odefile}: {e}")
+        
         init = model.init_state_values()
         self.states = np.zeros((len(init), len(initial_v.x.array)))
         

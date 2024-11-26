@@ -153,3 +153,22 @@ def forward_explicit_euler(states, t, dt, parameters):
     values[1] = dt * dv_dt + v
 
     return values
+
+
+def generalized_rush_larsen(states, t, dt, parameters):
+
+    # Assign states
+    s = states[0]
+    v = states[1]
+
+    # Assign parameters
+
+    # Assign expressions
+
+    values = numpy.zeros_like(states, dtype=numpy.float64)
+    ds_dt = v
+    values[0] = ds_dt * dt + s
+    dv_dt = -s
+    values[1] = dt * dv_dt + v
+
+    return values
