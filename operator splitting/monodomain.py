@@ -52,8 +52,8 @@ class PDESolver:
         return fem_func
 
     def set_stimulus(self, I_stim):
-        self.I_stim = I_stim
-
+        self.I_stim = I_stim(self.x, self.t, self.lam, self.M)
+    
     def setup_solver(self):
         v = ufl.TrialFunction(self.V)
         phi = ufl.TestFunction(self.V)
@@ -142,7 +142,7 @@ class MonodomainSolver:
 
         self.pde.vn.x.array[:] = self.ode.get_vn()
 
-    def solve(self, T, vtx_title):
+    def solve(self, T, vtx_title=None):
         if vtx_title:
             vtx = io.VTXWriter(MPI.COMM_WORLD, vtx_title + ".bp", [self.pde.vn], engine="BP4")
             vtx.write(0.0)
