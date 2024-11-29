@@ -42,33 +42,81 @@ def simple_error(h, dt, theta, lagrange_order):
 
     return E
 
-def convergence_plot(num_spatial, num_temporal, start_spatial, start_temporal, theta, lagrange_order):
-    hs = [1/(2**i) for i in range(start_spatial+num_spatial, start_spatial, -1)]
-    dts = [1/(2**i) for i in range(start_temporal+num_temporal, start_temporal, -1)]
+def spatial_convergence_plot(hs, dt, theta, lagrange_order):
+    num_spatial = len(hs)
+    errors = np.zeros(num_spatial)
+
+    for i_space in range(num_spatial):
+        errors[i_space] = simple_error(hs[i_space], dt, theta, lagrange_order)
+    
+    order = (np.log(errors[-1]) - np.log(errors[-2])) / (np.log(hs[-1]) - np.log(hs[-2]))
+    fig, ax = plt.subplots(figsize=(8,5))
+    ax.loglog(hs, errors, '-o', label = 'd = {:.3f}  '.format(dt)+ 'p = {:.2f}'.format(order))
+    ax.set_xlabel(r'$h$')
+    ax.set_ylabel('Error')
+    ax.set_title(f'L2 error for Lagrange order {lagrange_order}. ' + r'$\theta=$' + f'{theta}')
+    ax.legend()
+    ax.set_xticks(hs, hs)
+    ax.minorticks_off()
+    fig.show()
+
+def temporal_convergence_plot(h, dts, theta, lagrange_order):
+    num_temporal = len(dts)
+    errors = np.zeros(num_temporal)
+
+    for i_time in range(num_temporal):
+        errors[i_time] = simple_error(h, dts[i_time], theta, lagrange_order)
+    
+    order = (np.log(errors[-1]) - np.log(errors[-2])) / (np.log(dts[-1]) - np.log(dts[-2]))
+    fig, ax = plt.subplots(figsize=(8,5))
+    ax.loglog(dts, errors, '-o', label = 'h = {:.3f}  '.format(h)+ 'p = {:.2f}'.format(order))
+    ax.set_xlabel(r'$dt$')
+    ax.set_ylabel('Error')
+    ax.set_title(f'L2 error for Lagrange order {lagrange_order}. ' + r'$\theta=$' + f'{theta}')
+    ax.legend()
+    ax.set_xticks(dts, dts)
+    ax.minorticks_off()
+    fig.show()
+    
+def dual_convergence_plot(hs, dts, theta, lagrange_order):
+    num_spatial = len(hs)
+    num_temporal = len(dts)
 
     errors = np.zeros((num_temporal, num_spatial))
 
-    for itime in range(num_temporal):
-        for ispace in range(num_spatial):
-            errors[itime, ispace] = simple_error(hs[ispace], dts[itime], theta, lagrange_order)
+    for i_time in range(num_temporal):
+        for i_space in range(num_spatial):
+            errors[i_time, i_space] = simple_error(hs[i_space], dts[i_time], theta, lagrange_order)
     
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14,5), sharey=True)
-    fig.suptitle(f'L2 error for Lagrange order {lagrange_order}. Order of convergence ' + r'$p$. $\theta=$' + f'{theta}')
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14,5))
+    fig.suptitle(f'L2 error for Lagrange order {lagrange_order}. ' + r'$\theta=$' + f'{theta}')
     
-    for itime in range(len(dts)):
-        order = np.polyfit(np.log(hs),np.log(errors[itime]), 1)[0]
-        ax1.loglog(hs, errors[itime], '-o', label = 'dt = {:.3f}  '.format(dts[itime])+ 'p = {:.2f}'.format(order))
+    for i_time in range(len(dts)):
+        order = (np.log(errors[i_time,-1]) - np.log(errors[i_time,-2])) / (np.log(hs[-1]) - np.log(hs[-2]))
+
+        ax1.loglog(hs, errors[i_time], '-o', label = 'dt = {:.3f}  '.format(dts[i_time])+ 'p = {:.2f}'.format(order))
     ax1.set_xlabel(r'$h$')
     ax1.set_ylabel('Error')
     ax1.set_title(r'Error as a function of $h$ for different d$t$.')
     ax1.legend()
+    ax1.set_xticks(hs, hs)
+    ax1.minorticks_off()
 
-    for ispace in range(len(hs)):
-        order = np.polyfit(np.log(dts),np.log(errors[:,ispace]), 1)[0]
-        ax2.loglog(dts, errors[:,ispace], '-o', label = 'h = {:.3f}  '.format(hs[ispace])+ 'p = {:.2f}'.format(order))
+    for i_space in range(len(hs)):
+        order = (np.log(errors[-1, i_space]) - np.log(errors[-2, i_space])) / (np.log(dts[-1]) - np.log(dts[-2]))
+        ax2.loglog(dts, errors[:,i_space], '-o', label = 'h = {:.3f}  '.format(hs[i_space])+ 'p = {:.2f}'.format(order))
     ax2.set_xlabel(r'd$t$')
     ax2.set_ylabel('Error')
     ax2.set_title(r'Error as a function of d$t$ for different $h$.')
     ax2.legend()
-
+    ax2.set_xticks(dts, dts)
+    ax2.minorticks_off()
     fig.show()
+
+def convergence_plot(hs, dts, theta, lagrange_order):
+    if isinstance(hs, float):
+        temporal_convergence_plot(hs, dts, theta, lagrange_order)
+    elif isinstance(dts, float):
+        spatial_convergence_plot(hs, dts, theta, lagrange_order)
+    else:
+        dual_convergence_plot(hs, dts, theta, lagrange_order)
