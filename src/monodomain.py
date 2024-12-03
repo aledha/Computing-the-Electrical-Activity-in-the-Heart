@@ -81,17 +81,16 @@ class PDESolver:
 
 
 class ODESolver:
-    def __init__(self, odefile, scheme, initial_v, initial_states, state_names):
+    def __init__(self, odefile, scheme, num_nodes, initial_states = [], state_names = [], v_name = "v"):
         try:
             self.model = importlib.import_module(f"odes.{odefile}")
         except ImportError as e:
             raise ImportError(f"Failed to import {odefile}: {e}")
         
         init = self.model.init_state_values()
-        self.states = np.zeros((len(init), len(initial_v.x.array)))
+        self.states = np.tile(init, (num_nodes, 1)).T
         
-        self.v_index = self.model.state_index("v")
-        self.states[self.v_index, :] = initial_v.x.array
+        self.v_index = self.model.state_index(v_name)
 
         for state, name in zip(initial_states, state_names):
             state_index = self.model.state_index(name)
@@ -145,7 +144,6 @@ class MonodomainSolver:
     def solve(self, T, vtx_title=None):
         if vtx_title:
             vtx = io.VTXWriter(MPI.COMM_WORLD, vtx_title + ".bp", [self.pde.vn], engine="BP4")
-            vtx.write(0.0)
         while self.t.value < T:
             self.step()
             if vtx_title:
