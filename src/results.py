@@ -29,8 +29,8 @@ def simple_error(h, dt, theta, lagrange_order):
 
     sn = pde.interpolate_func(initial_s)
     scheme = "forward_explicit_euler" if theta > 1 else "theta_rule"
-
-    ode = monodomain.ODESolver(odefile="simple", scheme=scheme, initial_v=pde.vn, initial_states=[sn], state_names=["s"])
+    num_nodes = len(pde.vn.x.array)
+    ode = monodomain.ODESolver(odefile="simple", scheme=scheme, num_nodes=num_nodes, initial_states=[pde.vn, sn], state_names=["v", "s"])
 
     solver = monodomain.MonodomainSolver(pde, ode)
     vn, x, t = solver.solve(T=1)
