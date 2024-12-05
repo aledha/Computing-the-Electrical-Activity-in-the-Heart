@@ -17,7 +17,7 @@ def simple_error(h, dt, theta, lagrange_order):
     def I_stim(x, t, lam, M):
         return 8 * ufl.pi**2 * lam/(1+lam) * ufl.sin(t) * ufl.cos(2*ufl.pi*x[0]) * ufl.cos(2*ufl.pi*x[1])
     
-    pde = monodomain.PDESolver(h, dt, theta, M = 1, lam = 1)
+    pde = monodomain.PDESolver(h, dt, theta, C_m = 1.0, chi = 1.0, M = 1, lam = 1)
 
     N = int(np.ceil(1/h))
     domain = mesh.create_unit_square(MPI.COMM_WORLD, N, N, mesh.CellType.quadrilateral)

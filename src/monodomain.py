@@ -26,11 +26,14 @@ class PDESolver:
     h: float
     dt: float
     theta: float
+    C_m: ufl.Constant
+    chi: ufl.Constant
     M: ufl.Constant
     lam: ufl.Constant
 
     def __post_init__(self)->None:
-        self.gamma = self.dt * self.lam / (1+self.lam)
+        self.alpha = self.dt / (self.chi * self.C_m) * self.lam / (1+self.lam)
+        self.beta = self.dt / self.C_m
         self.N = int(np.ceil(1/self.h))
 
     def set_mesh(self, domain, lagrange_order) -> None:
@@ -58,8 +61,8 @@ class PDESolver:
         v = ufl.TrialFunction(self.V)
         phi = ufl.TestFunction(self.V)
         dx = ufl.dx(domain=self.domain)
-        a = phi * v * dx + self.gamma * self.theta * ufl.dot(ufl.grad(phi), ufl.grad(v)) * dx
-        L = phi * (self.vn + self.dt * self.I_stim) * dx - self.gamma * (1-self.theta) * ufl.dot(ufl.grad(phi), ufl.grad(self.vn)) * dx
+        a = phi * v * dx + self.alpha * self.theta * ufl.dot(ufl.grad(phi), ufl.grad(v)) * dx
+        L = phi * (self.vn + self.beta * self.I_stim) * dx - self.alpha * (1-self.theta) * ufl.dot(ufl.grad(phi), self.M * ufl.grad(self.vn)) * dx
         compiled_a = fem.form(a)
         A = petsc.assemble_matrix(compiled_a)
         A.assemble()
