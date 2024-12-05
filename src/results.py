@@ -42,7 +42,7 @@ def simple_error(h, dt, theta, lagrange_order):
 
     return E
 
-def spatial_convergence_plot(hs, dt, theta, lagrange_order):
+def spatial_convergence_plot(hs, dt, theta, lagrange_order, plot_title=None):
     num_spatial = len(hs)
     errors = np.zeros(num_spatial)
 
@@ -58,9 +58,11 @@ def spatial_convergence_plot(hs, dt, theta, lagrange_order):
     ax.legend()
     ax.set_xticks(hs, hs)
     ax.minorticks_off()
+    if plot_title:
+        fig.savefig(plot_title, bbox_inches='tight')
     fig.show()
 
-def temporal_convergence_plot(h, dts, theta, lagrange_order):
+def temporal_convergence_plot(h, dts, theta, lagrange_order, plot_title=None):
     num_temporal = len(dts)
     errors = np.zeros(num_temporal)
 
@@ -76,9 +78,11 @@ def temporal_convergence_plot(h, dts, theta, lagrange_order):
     ax.legend()
     ax.set_xticks(dts, dts)
     ax.minorticks_off()
+    if plot_title:
+        fig.savefig(plot_title, bbox_inches='tight')
     fig.show()
     
-def dual_convergence_plot(hs, dts, theta, lagrange_order):
+def dual_convergence_plot(hs, dts, theta, lagrange_order, plot_title=None):
     num_spatial = len(hs)
     num_temporal = len(dts)
 
@@ -111,12 +115,14 @@ def dual_convergence_plot(hs, dts, theta, lagrange_order):
     ax2.legend()
     ax2.set_xticks(dts, dts)
     ax2.minorticks_off()
+    if plot_title:
+        fig.savefig(plot_title, bbox_inches='tight')
     fig.show()
 
-def convergence_plot(hs, dts, theta, lagrange_order):
+def convergence_plot(hs, dts, theta, lagrange_order, plot_title=None):
     if isinstance(hs, float):
-        temporal_convergence_plot(hs, dts, theta, lagrange_order)
+        temporal_convergence_plot(hs, dts, theta, lagrange_order, plot_title)
     elif isinstance(dts, float):
-        spatial_convergence_plot(hs, dts, theta, lagrange_order)
+        spatial_convergence_plot(hs, dts, theta, lagrange_order, plot_title)
     else:
-        dual_convergence_plot(hs, dts, theta, lagrange_order)
+        dual_convergence_plot(hs, dts, theta, lagrange_order, plot_title)
