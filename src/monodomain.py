@@ -147,7 +147,7 @@ class MonodomainSolver:
     def solve(self, T, vtx_title=None):
         if vtx_title:
             vtx = io.VTXWriter(MPI.COMM_WORLD, vtx_title + ".bp", [self.pde.vn], engine="BP4")
-        while self.t.value < T:
+        while self.t.value < T + self.dt:
             self.step()
             if vtx_title:
                 vtx.write(self.t.value)
