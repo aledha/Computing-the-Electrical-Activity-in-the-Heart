@@ -9,17 +9,16 @@ import gmsh
 
 
 def simple_error(h, dt, theta, lagrange_order, T):
-
     def initial_v(x):
         return 0*x[0]
 
     def initial_s(x):
         return -np.cos(2*np.pi * x[0]) * np.cos(2*np.pi * x[1])
     
-    def I_stim(x, t, lam, M):
-        return 8 * ufl.pi**2 * lam/(1+lam) * ufl.sin(t) * ufl.cos(2*ufl.pi*x[0]) * ufl.cos(2*ufl.pi*x[1])
+    def I_stim(x, t):
+        return 8 * ufl.pi**2 * ufl.sin(t) * ufl.cos(2*ufl.pi*x[0]) * ufl.cos(2*ufl.pi*x[1])
     
-    pde = monodomain.PDESolver(h, dt, theta, C_m = 1.0, chi = 1.0, M = 1, lam = 1)
+    pde = monodomain.PDESolver(h, dt, theta, C_m = 1.0, chi = 1.0, M = 1)
 
     N = int(np.ceil(1/h))
     domain = mesh.create_unit_square(MPI.COMM_WORLD, N, N, mesh.CellType.quadrilateral)
@@ -44,12 +43,12 @@ def simple_error(h, dt, theta, lagrange_order, T):
     pde.setup_solver()
 
     sn = pde.interpolate_func(initial_s)
-    scheme = "forward_explicit_euler" if theta > 1 else "theta_rule"
+    scheme = "forward_explicit_euler" if theta == 1 else "theta_rule"
     num_nodes = len(pde.vn.x.array)
     ode = monodomain.ODESolver(odefile="simple", scheme=scheme, num_nodes=num_nodes, initial_states=[pde.vn, sn], state_names=["v", "s"])
 
     solver = monodomain.MonodomainSolver(pde, ode)
-    vn, x, t = solver.solve(T=T)
+    vn, x, t = solver.solve(T)
     v_ex = ufl.cos(2 * ufl.pi * x[0]) * ufl.cos(2 * ufl.pi * x[1]) * ufl.sin(t)
 
     comm = vn.function_space.mesh.comm

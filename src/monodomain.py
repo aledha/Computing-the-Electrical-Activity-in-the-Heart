@@ -29,11 +29,9 @@ class PDESolver:
     C_m: ufl.Constant
     chi: ufl.Constant
     M: ufl.Constant
-    lam: ufl.Constant
 
     def __post_init__(self)->None:
-        self.alpha = self.dt / (self.chi * self.C_m) * self.lam / (1+self.lam)
-        self.beta = self.dt / self.C_m
+        self.alpha = self.dt / (self.chi * self.C_m) 
         self.N = int(np.ceil(1/self.h))
 
     def set_mesh(self, domain, lagrange_order) -> None:
@@ -55,14 +53,14 @@ class PDESolver:
         return fem_func
 
     def set_stimulus(self, I_stim):
-        self.I_stim = I_stim(self.x, self.t, self.lam, self.M)
+        self.I_stim = I_stim(self.x, self.t)
     
     def setup_solver(self):
         v = ufl.TrialFunction(self.V)
         phi = ufl.TestFunction(self.V)
         dx = ufl.dx(domain=self.domain)
-        a = phi * v * dx + self.alpha * self.theta * ufl.dot(ufl.grad(phi), ufl.grad(v)) * dx
-        L = phi * (self.vn + self.beta * self.I_stim) * dx - self.alpha * (1-self.theta) * ufl.dot(ufl.grad(phi), self.M * ufl.grad(self.vn)) * dx
+        a = phi * v * dx + self.alpha * self.theta * ufl.dot(ufl.grad(phi), self.M * ufl.grad(v)) * dx
+        L = phi * (self.vn + self.alpha * self.chi * self.I_stim) * dx - self.alpha * (1-self.theta) * ufl.dot(ufl.grad(phi), self.M * ufl.grad(self.vn)) * dx
         compiled_a = fem.form(a)
         A = petsc.assemble_matrix(compiled_a)
         A.assemble()
@@ -152,6 +150,11 @@ class MonodomainSolver:
             if vtx_title:
                 vtx.write(self.t.value)
 
+        return self.pde.vn, self.pde.x, self.t
+    
+    def solve_num_steps(self, num_steps):
+        for _ in range(num_steps):
+            self.step()
         return self.pde.vn, self.pde.x, self.t
 
 
