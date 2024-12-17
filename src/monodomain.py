@@ -1,4 +1,4 @@
-from dolfinx import fem, mesh, io
+from dolfinx import fem, mesh, io, geometry
 import dolfinx.fem.petsc as petsc
 from petsc4py import PETSc
 import numpy as np
@@ -9,6 +9,7 @@ from pathlib import Path
 from dataclasses import dataclass
 import importlib
 import sys
+
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 def translateODE(odeFileName, schemes):
@@ -31,7 +32,6 @@ class PDESolver:
     M: ufl.Constant
 
     def __post_init__(self)->None:
-        self.alpha = self.dt / (self.chi * self.C_m) 
         self.N = int(np.ceil(1/self.h))
 
     def set_mesh(self, domain, lagrange_order) -> None:
@@ -59,8 +59,8 @@ class PDESolver:
         v = ufl.TrialFunction(self.V)
         phi = ufl.TestFunction(self.V)
         dx = ufl.dx(domain=self.domain)
-        a = phi * v * dx + self.alpha * self.theta * ufl.dot(ufl.grad(phi), self.M * ufl.grad(v)) * dx
-        L = phi * (self.vn + self.alpha * self.chi * self.I_stim) * dx - self.alpha * (1-self.theta) * ufl.dot(ufl.grad(phi), self.M * ufl.grad(self.vn)) * dx
+        a = phi * v * dx + self.dt * self.theta * ufl.dot(ufl.grad(phi), self.M * ufl.grad(v)) * dx
+        L = phi * (self.vn + self.dt * self.I_stim) * dx - self.dt * (1-self.theta) * ufl.dot(ufl.grad(phi), self.M * ufl.grad(self.vn)) * dx
         compiled_a = fem.form(a)
         A = petsc.assemble_matrix(compiled_a)
         A.assemble()
@@ -82,23 +82,19 @@ class PDESolver:
 
 
 class ODESolver:
-    def __init__(self, odefile, scheme, num_nodes, initial_states = [], state_names = [], v_name = "v"):
+    def __init__(self, odefile, scheme, num_nodes, v_name = "v", initial_states = None):
         try:
             self.model = importlib.import_module(f"odes.{odefile}")
         except ImportError as e:
             raise ImportError(f"Failed to import {odefile}: {e}")
-        
-        init = self.model.init_state_values()
+
+        if initial_states:
+            init = self.model.init_state_values(**initial_states)
+        else:
+            init = self.model.init_state_values()
         self.states = np.tile(init, (num_nodes, 1)).T
         
         self.v_index = self.model.state_index(v_name)
-
-        for state, name in zip(initial_states, state_names):
-            state_index = self.model.state_index(name)
-            if isinstance(state, np.ndarray):
-                self.states[state_index, :] = state
-            else:
-                self.states[state_index, :] = state.x.array
 
         self.params = self.model.init_parameter_values()
         self.odesolver = getattr(self.model, scheme)
@@ -106,7 +102,11 @@ class ODESolver:
     def set_param(self, name, value):
         param_index = self.model.parameter_index(name)
         self.params[param_index] = value
-    
+
+    def set_state(self, state_name, state):
+        state_index = self.model.state_index(state_name)
+        self.states[state_index, :] = state[:]
+
     def solve_ode_step(self, t, dt):
         self.states[:] = self.odesolver(self.states, t, dt, self.params)
 
@@ -114,7 +114,7 @@ class ODESolver:
         self.states[self.v_index, :] = vn.x.array[:]
 
     def get_vn(self):
-        return self.states[self.v_index,:]
+        return self.states[self.v_index, :]
 
 @dataclass
 class MonodomainSolver:
@@ -124,6 +124,7 @@ class MonodomainSolver:
         self.t = self.pde.t
         self.dt = self.pde.dt
         self.theta = self.pde.theta
+        self.domain = self.pde.domain
 
     def step(self):
         # Step 1
@@ -156,7 +157,23 @@ class MonodomainSolver:
         for _ in range(num_steps):
             self.step()
         return self.pde.vn, self.pde.x, self.t
-
+    
+    def solve_activation_times(self, points, T):
+        times = np.zeros(len(points))
+        cells = np.zeros(len(points))
+     
+        tree = geometry.bb_tree(self.domain, self.domain.geometry.dim)
+        
+        for i in range(len(points)):
+            cell_candidates = geometry.compute_collisions_points(tree, points[i])
+            cells[i] = geometry.compute_colliding_cells(self.domain, cell_candidates, points[i]).array[0]
+  
+        while self.t.value < T + self.dt and np.min(times)==0:
+            self.step()
+            for i in range(len(points)):
+                if times[i] == 0 and self.pde.vn.eval(points[i], cells[i]) > 0:
+                    times[i] = self.t.value
+        return times
 
         
 
