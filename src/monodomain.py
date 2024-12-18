@@ -27,9 +27,7 @@ class PDESolver:
     h: float
     dt: float
     theta: float
-    C_m: ufl.Constant
-    chi: ufl.Constant
-    M: ufl.Constant
+    M: ufl.Constant    # M=1/(chi*C_m) * lambda/(1+lambda) * M_i
 
     def __post_init__(self)->None:
         self.N = int(np.ceil(1/self.h))
@@ -53,7 +51,7 @@ class PDESolver:
         return fem_func
 
     def set_stimulus(self, I_stim):
-        self.I_stim = I_stim(self.x, self.t)
+        self.I_stim = I_stim(self.x, self.t)    # = 1/(chi*C_m) * I_stim
     
     def setup_solver(self):
         v = ufl.TrialFunction(self.V)
@@ -163,7 +161,6 @@ class MonodomainSolver:
         cells = np.zeros(len(points))
      
         tree = geometry.bb_tree(self.domain, self.domain.geometry.dim)
-        
         for i in range(len(points)):
             cell_candidates = geometry.compute_collisions_points(tree, points[i])
             cells[i] = geometry.compute_colliding_cells(self.domain, cell_candidates, points[i]).array[0]
