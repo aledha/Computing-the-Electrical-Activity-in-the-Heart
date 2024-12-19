@@ -54,7 +54,7 @@ class PDESolver:
     def set_stimulus(self, I_stim):
         self.I_stim = I_stim(self.x, self.t)    # = 1/(chi*C_m) * I_stim
     
-    def setup_solver(self):
+    def setup_solver(self, solver_type = "PREONLY"):
         v = ufl.TrialFunction(self.V)
         phi = ufl.TestFunction(self.V)
         dx = ufl.dx(domain=self.domain)
@@ -66,16 +66,21 @@ class PDESolver:
 
         self.compiled_L = fem.form(L)
         self.b = fem.Function(self.V)
-        
         self.solver = PETSc.KSP().create(self.domain.comm)
+        if solver_type == "PREONLY":
+            self.solver.setType(PETSc.KSP.Type.PREONLY)
+            self.solver.getPC().setType(PETSc.PC.Type.LU)
+            self.solver.setErrorIfNotConverged(True)
+            self.solver.getPC().setFactorSolverType("mumps")
+        elif solver_type == "CG":
+            self.solver.setErrorIfNotConverged(True)
+            self.solver.setType(PETSc.KSP.Type.CG)  
+            self.solver.getPC().setType(PETSc.PC.Type.SOR)
         self.solver.setOperators(A)
-        self.solver.setType(PETSc.KSP.Type.PREONLY)
-        self.solver.getPC().setType(PETSc.PC.Type.LU)
     
     def solve_pde_step(self):
         self.b.x.array[:] = 0
         petsc.assemble_vector(self.b.vector, self.compiled_L)
-        
         self.solver.solve(self.b.vector, self.vn.vector)
         self.vn.x.scatter_forward()
 
@@ -91,6 +96,7 @@ class ODESolver:
             init = self.model.init_state_values(**initial_states)
         else:
             init = self.model.init_state_values()
+        # Note: change to parallell
         self.states = np.tile(init, (num_nodes, 1)).T
         
         self.v_index = self.model.state_index(v_name)
@@ -157,11 +163,37 @@ class MonodomainSolver:
             self.step()
         return self.pde.vn, self.pde.x, self.t
     
-    def solve_activation_times(self, points, T):
-        times = -np.ones(len(points))
-        while self.t.value <= T and np.min(times) < 0:
+    def solve_activation_times(self, points, line, T):
+        bb_tree = geometry.bb_tree(self.domain, self.domain.topology.dim)
+        # Find cells whose bounding-box collide with the the points
+        potential_colliding_cells_points = geometry.compute_collisions_points(bb_tree, points)
+        # Choose one of the cells that contains the point
+        adj_points = geometry.compute_colliding_cells(self.domain, potential_colliding_cells_points, points)
+        indices_points = np.flatnonzero(adj_points.offsets[1:] - adj_points.offsets[:-1])
+        cells_points = adj_points.array[adj_points.offsets[indices_points]]
+        points_on_proc = points[indices_points]
+
+        # Find cells whose bounding-box collide with the the points
+        potential_colliding_cells_line = geometry.compute_collisions_points(bb_tree, line)
+        # Choose one of the cells that contains the point
+        adj_line = geometry.compute_colliding_cells(self.domain, potential_colliding_cells_line, line)
+        indices_line = np.flatnonzero(adj_line.offsets[1:] - adj_line.offsets[:-1])
+        cells_line = adj_line.array[adj_line.offsets[indices_line]]
+        line_on_proc = line[indices_line]
+
+        times_points = -np.ones(len(points))
+        times_line = -np.ones(len(line))
+
+        while self.t.value <= T and np.min(times_points) < 0:
             self.step()
+
+            evaluated_points = self.pde.vn.eval(points_on_proc, cells_points)
             for i in range(len(points)):
-                if times[i] < 0 and evaluate_function(self.pde.vn, [points[i]]) > 0:
-                    times[i] = self.t.value
-        return times
+                if times_points[i] < 0 and evaluated_points[i] > 0:
+                    times_points[i] = np.round(self.t.value, 10)       # Eliminate machine error since it would be a multiple of dt
+
+            evaluated_lines = self.pde.vn.eval(line_on_proc, cells_line)
+            for i in range(len(line)):
+                if times_line[i] < 0 and evaluated_lines[i] > 0:
+                    times_line[i] = np.round(self.t.value, 10)         # Eliminate machine error since it would be a multiple of dt
+        return times_points, times_line

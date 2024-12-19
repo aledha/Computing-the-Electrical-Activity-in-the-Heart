@@ -79,20 +79,25 @@ def benchmark(h, dt, theta, lagrange_order):
                         [Lx,Ly,Lz],
                         [Lx/2,Ly/2,Lz/2]
                         ])
-    activation_times = solver.solve_activation_times(points, T=100)
-    return activation_times
+    line = np.linspace([0,0,0], [Lx, Ly, Lz], 50)
+    time_points, time_line = solver.solve_activation_times(points, line, T=150)
+    return time_points, time_line
 
 def write_to_csv(h, dt, theta=1, lagrange_order=1):
-    activation_times = benchmark(h, dt, theta, lagrange_order)
-    activation_times_dict = {f"P{i+1}": round(activation_times[i], 10) for i in range(len(activation_times))}
+    time_points, time_line = benchmark(h, dt, theta, lagrange_order)
+    time_points_dict = {f"P{i+1}": round(time_points[i], 10) for i in range(len(time_points))}
     with open('activation_times.txt', 'a') as file:
-        file.write(json.dumps({f'h={h}, dt={dt}': activation_times_dict}))
+        file.write(json.dumps({f'h={h}, dt={dt}': time_points_dict}))
+        file.write('\n')
+    with open('activation_times_line.csv', 'a') as file:
+        file.write(f'h={h}, dt={dt}\n')
+        np.savetxt(file, time_line, delimiter=',')
         file.write('\n')
 
-hs = [0.5, 0.2]
-dts = [0.01, 0.005, 0.01]
+hs = [0.1]
+dts = [0.01, 0.005]
 
-for dt in dts:
-    for h in hs:
+for h in hs:
+    for dt in dts:
         write_to_csv(h, dt)
         print(f"Completed h={h}, dt={dt}")
