@@ -9,6 +9,7 @@ from pathlib import Path
 from dataclasses import dataclass
 import importlib
 import sys
+from scifem import evaluate_function
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
@@ -157,22 +158,10 @@ class MonodomainSolver:
         return self.pde.vn, self.pde.x, self.t
     
     def solve_activation_times(self, points, T):
-        times = np.zeros(len(points))
-        cells = np.zeros(len(points))
-     
-        tree = geometry.bb_tree(self.domain, self.domain.geometry.dim)
-        for i in range(len(points)):
-            cell_candidates = geometry.compute_collisions_points(tree, points[i])
-            cells[i] = geometry.compute_colliding_cells(self.domain, cell_candidates, points[i]).array[0]
-  
-        while self.t.value < T + self.dt and np.min(times)==0:
+        times = -np.ones(len(points))
+        while self.t.value <= T and np.min(times) < 0:
             self.step()
             for i in range(len(points)):
-                if times[i] == 0 and self.pde.vn.eval(points[i], cells[i]) > 0:
+                if times[i] < 0 and evaluate_function(self.pde.vn, [points[i]]) > 0:
                     times[i] = self.t.value
         return times
-
-        
-
-
-

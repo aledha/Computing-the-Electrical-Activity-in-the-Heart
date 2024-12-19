@@ -5,6 +5,7 @@ from dolfinx import mesh
 import ufl
 from mpi4py import MPI
 from pint import UnitRegistry
+import json
 ureg = UnitRegistry()
 
 initial_states = {
@@ -78,6 +79,20 @@ def benchmark(h, dt, theta, lagrange_order):
                         [Lx,Ly,Lz],
                         [Lx/2,Ly/2,Lz/2]
                         ])
-    activation_times = solver.solve_activation_times(points, T=50)
+    activation_times = solver.solve_activation_times(points, T=100)
     return activation_times
-    #vn, x, t = solver.solve(T=50, vtx_title="niederer")
+
+def write_to_csv(h, dt, theta=1, lagrange_order=1):
+    activation_times = benchmark(h, dt, theta, lagrange_order)
+    activation_times_dict = {f"P{i+1}": round(activation_times[i], 10) for i in range(len(activation_times))}
+    with open('activation_times.txt', 'a') as file:
+        file.write(json.dumps({f'h={h}, dt={dt}': activation_times_dict}))
+        file.write('\n')
+
+hs = [0.5, 0.2]
+dts = [0.01, 0.005, 0.01]
+
+for dt in dts:
+    for h in hs:
+        write_to_csv(h, dt)
+        print(f"Completed h={h}, dt={dt}")
