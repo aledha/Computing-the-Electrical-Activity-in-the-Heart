@@ -186,7 +186,6 @@ class MonodomainSolver:
 
         while self.t.value <= T and np.min(times_points) < 0:
             self.step()
-
             evaluated_points = self.pde.vn.eval(points_on_proc, cells_points)
             for i in range(len(points)):
                 if times_points[i] < 0 and evaluated_points[i] > 0:
@@ -196,4 +195,5 @@ class MonodomainSolver:
             for i in range(len(line)):
                 if times_line[i] < 0 and evaluated_lines[i] > 0:
                     times_line[i] = np.round(self.t.value, 10)         # Eliminate machine error since it would be a multiple of dt
+            print(f"t={np.round(self.t.value,3)}")
         return times_points, times_line

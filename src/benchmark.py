@@ -58,7 +58,7 @@ def benchmark(h, dt, theta, lagrange_order):
 
     pde.set_mesh(domain, lagrange_order)
     pde.set_stimulus(I_stim)
-    pde.setup_solver()
+    pde.setup_solver("CG")
 
     num_nodes = pde.V.dofmap.index_map.size_global
 
@@ -80,7 +80,7 @@ def benchmark(h, dt, theta, lagrange_order):
                         [Lx/2,Ly/2,Lz/2]
                         ])
     line = np.linspace([0,0,0], [Lx, Ly, Lz], 50)
-    time_points, time_line = solver.solve_activation_times(points, line, T=150)
+    time_points, time_line = solver.solve_activation_times(points, line, T=100)
     return time_points, time_line
 
 def write_to_csv(h, dt, theta=1, lagrange_order=1):
@@ -94,10 +94,23 @@ def write_to_csv(h, dt, theta=1, lagrange_order=1):
         np.savetxt(file, time_line, delimiter=',')
         file.write('\n')
 
-hs = [0.1]
-dts = [0.01, 0.005]
+def read_file_and_plot():
+    activation_time_dict = {}
+    with open('activation_times_line.csv', 'r') as file:
+        for line in file:
+            if line[0] == 'h':
+                current_params = line
+                current_values = np.zeros(49)
+            elif line in ['\n', '\r\n']:
+                activation_time_dict[current_params] = current_values
+            
+            print(line)
+            print(line[0])
 
-for h in hs:
-    for dt in dts:
-        write_to_csv(h, dt)
-        print(f"Completed h={h}, dt={dt}")
+hs = [0.1]
+dts = [0.05, 0.01, 0.005]
+read_file_and_plot()
+# for h in hs:
+#     for dt in dts:
+#         write_to_csv(h, dt)
+#         print(f"Completed h={h}, dt={dt}")
